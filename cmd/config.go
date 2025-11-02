@@ -46,6 +46,4 @@ type Config struct {
 
 	// 應用配置
 	AppNames []string `help:"應用名稱列表" env:"APP_NAMES" sep:"," name:"app-names" yaml:"app_names"`
-
-	WorkDir string `help:"工作目錄" type:"path"`
 }

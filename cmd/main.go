@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"gopkg.in/yaml.v3"
@@ -76,14 +77,15 @@ func yamlConfigurationLoader(r io.Reader) (kong.Resolver, error) {
 func normalizeYAML(value any) any {
 	switch v := value.(type) {
 	case map[string]any:
+		out := make(map[string]any, len(v))
 		for key, val := range v {
-			v[key] = normalizeYAML(val)
+			addKeyVariants(out, key, normalizeYAML(val))
 		}
-		return v
+		return out
 	case map[interface{}]any:
 		out := make(map[string]any, len(v))
 		for key, val := range v {
-			out[fmt.Sprint(key)] = normalizeYAML(val)
+			addKeyVariants(out, fmt.Sprint(key), normalizeYAML(val))
 		}
 		return out
 	case []interface{}:
@@ -93,5 +95,19 @@ func normalizeYAML(value any) any {
 		return v
 	default:
 		return v
+	}
+}
+
+func addKeyVariants(target map[string]any, key string, val any) {
+	target[key] = val
+	if alt := strings.ReplaceAll(key, "-", "_"); alt != key {
+		if _, exists := target[alt]; !exists {
+			target[alt] = val
+		}
+	}
+	if alt := strings.ReplaceAll(key, "_", "-"); alt != key {
+		if _, exists := target[alt]; !exists {
+			target[alt] = val
+		}
 	}
 }

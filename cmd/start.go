@@ -14,7 +14,8 @@ import (
 )
 
 type StartCmd struct {
-	Config `embed:""`
+	Config  `embed:""`
+	WorkDir string `help:"工作目錄" type:"path"`
 }
 
 func (s *StartCmd) Run() error {

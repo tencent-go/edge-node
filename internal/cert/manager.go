@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -275,15 +276,19 @@ func (m *manager) generateCSR() (string, error) {
 
 	// 生成 CSR
 	commonName := m.PublicIps[0]
-	if len(m.PublicIps) > 1 {
-		// 如果有多個 IP，使用逗號連接作為 CommonName
-		commonName = strings.Join(m.PublicIps, ",")
-	}
 
 	template := x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName: commonName,
 		},
+	}
+
+	for _, ipStr := range m.PublicIps {
+		if parsed := net.ParseIP(ipStr); parsed != nil {
+			template.IPAddresses = append(template.IPAddresses, parsed)
+		} else {
+			logrus.Warnf("invalid IP address in configuration, skipping in CSR SAN: %s", ipStr)
+		}
 	}
 
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &template, privateKey)

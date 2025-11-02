@@ -84,21 +84,25 @@ func createCertificate(ctx context.Context, req CreateCertificateRequest, apiKey
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errx.Wrap(err).AppendMsg("failed to read response body").Err()
+	}
+
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
 		logrus.Errorf("Failed to create certificate: %d", resp.StatusCode)
-		logrus.Errorf("Response: %s", string(body))
+		logrus.Errorf("Response: %s", string(bodyBytes))
 		return nil, errx.Newf("failed to create certificate: %d", resp.StatusCode)
 	}
 
 	var createResp CreateCertificateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+	if err := json.Unmarshal(bodyBytes, &createResp); err != nil {
+		logrus.Errorf("Raw API response: %s", string(bodyBytes))
 		return nil, errx.Wrap(err).AppendMsg("failed to parse response").Err()
 	}
 
 	if createResp.ID == "" {
-		respJSON, _ := json.MarshalIndent(createResp, "", "  ")
-		logrus.Errorf("API response: %s", string(respJSON))
+		logrus.Errorf("ZeroSSL API returned unexpected payload: %s", string(bodyBytes))
 		return nil, errx.New("certificate ID not found")
 	}
 

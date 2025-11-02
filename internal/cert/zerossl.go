@@ -74,13 +74,13 @@ func createCertificate(ctx context.Context, req CreateCertificateRequest, apiKey
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", createURL, strings.NewReader(formData.Encode()))
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to create request").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to create request").Err()
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("certificate creation request failed").Err()
+		return nil, errx.Wrap(err).AppendMsg("certificate creation request failed").Err()
 	}
 	defer resp.Body.Close()
 
@@ -93,7 +93,7 @@ func createCertificate(ctx context.Context, req CreateCertificateRequest, apiKey
 
 	var createResp CreateCertificateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to parse response").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to parse response").Err()
 	}
 
 	if createResp.ID == "" {
@@ -117,13 +117,13 @@ func verifyChallenge(ctx context.Context, certID, apiKey string, req VerifyChall
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", verifyURL, strings.NewReader(verifyData.Encode()))
 	if err != nil {
-		return errx.Wrap(err).WithMsg("failed to create validation request").Err()
+		return errx.Wrap(err).AppendMsg("failed to create validation request").Err()
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	verifyResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return errx.Wrap(err).WithMsg("failed to trigger validation").Err()
+		return errx.Wrap(err).AppendMsg("failed to trigger validation").Err()
 	}
 	defer verifyResp.Body.Close()
 
@@ -144,12 +144,12 @@ func getCertificateStatus(ctx context.Context, certID, apiKey, baseURL string) (
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", statusURL, nil)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to create status request").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to create status request").Err()
 	}
 
 	statusResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to get status").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to get status").Err()
 	}
 	defer statusResp.Body.Close()
 
@@ -159,7 +159,7 @@ func getCertificateStatus(ctx context.Context, certID, apiKey, baseURL string) (
 
 	var statusData CertificateStatusResponse
 	if err := json.NewDecoder(statusResp.Body).Decode(&statusData); err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to parse status").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to parse status").Err()
 	}
 
 	return &statusData, nil
@@ -173,12 +173,12 @@ func downloadCertificate(ctx context.Context, certID, apiKey, baseURL string) (*
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to create download request").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to create download request").Err()
 	}
 
 	downloadResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to download certificate").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to download certificate").Err()
 	}
 	defer downloadResp.Body.Close()
 
@@ -189,7 +189,7 @@ func downloadCertificate(ctx context.Context, certID, apiKey, baseURL string) (*
 
 	var certFiles CertificateDownloadResponse
 	if err := json.NewDecoder(downloadResp.Body).Decode(&certFiles); err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to parse certificate files").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to parse certificate files").Err()
 	}
 
 	return &certFiles, nil

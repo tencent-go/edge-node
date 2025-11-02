@@ -24,7 +24,7 @@ type Config struct {
 	CertValidityDays int
 	ZeroSSLApiKey    string
 	ZeroSSLBaseURL   string
-	PublicIP         string
+	PublicIps        []string
 }
 
 type Manager interface {
@@ -41,7 +41,7 @@ type manager struct {
 func NewManager(cfg Config) (Manager, error) {
 	// 創建證書目錄
 	if err := os.MkdirAll(cfg.CertDir, 0755); err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to create certificate directory").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to create certificate directory").Err()
 	}
 	m := &manager{
 		Config: cfg,
@@ -73,7 +73,7 @@ func (m *manager) Obtain(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logrus.Infof("Starting ZeroSSL certificate request for IP %s...", m.PublicIP)
+	logrus.Infof("Starting ZeroSSL certificate request for IPs %v...", m.PublicIps)
 	logrus.Info("ZeroSSL certificate validity: 90 days")
 	return m.obtainCertificate(ctx)
 }
@@ -85,27 +85,27 @@ func (m *manager) loadCertFromDisk() (*x509.Certificate, error) {
 
 	// 檢查文件是否存在
 	if _, err := os.Stat(certPath); os.IsNotExist(err) {
-		return nil, errx.NotFound.WithMsg("certificate file not found").Err()
+		return nil, errx.NotFound.AppendMsg("certificate file not found").Err()
 	}
 	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		return nil, errx.NotFound.WithMsg("private key file not found").Err()
+		return nil, errx.NotFound.AppendMsg("private key file not found").Err()
 	}
 
 	// 讀取證書
 	certData, err := os.ReadFile(certPath)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to read certificate file").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to read certificate file").Err()
 	}
 
 	// 解析證書
 	block, _ := pem.Decode(certData)
 	if block == nil {
-		return nil, errx.Validation.WithMsg("failed to decode certificate PEM").Err()
+		return nil, errx.Validation.AppendMsg("failed to decode certificate PEM").Err()
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, errx.Wrap(err).WithMsg("failed to parse certificate").Err()
+		return nil, errx.Wrap(err).AppendMsg("failed to parse certificate").Err()
 	}
 
 	return cert, nil
@@ -116,49 +116,43 @@ func (m *manager) validateCert(cert *x509.Certificate) error {
 	// 1. 驗證證書是否過期
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
-		return errx.Validation.WithMsg("certificate not yet valid").Err()
+		return errx.Validation.AppendMsg("certificate not yet valid").Err()
 	}
 	if now.After(cert.NotAfter) {
-		return errx.Validation.WithMsg("certificate expired").Err()
+		return errx.Validation.AppendMsg("certificate expired").Err()
 	}
 
-	// 2. 驗證 IP 地址是否匹配
-	ipMatched := false
+	// 2. 驗證配置的所有 IP 是否都在證書中
+	// 收集證書中的所有 IP
+	certIPs := make(map[string]bool)
 
-	// 檢查 Subject.CommonName
-	if cert.Subject.CommonName == m.PublicIP {
-		logrus.Infof("Certificate IP matched (CommonName): %s", m.PublicIP)
-		ipMatched = true
+	// 從 CommonName 收集
+	if cert.Subject.CommonName != "" {
+		certIPs[cert.Subject.CommonName] = true
 	}
 
-	// 檢查 IPAddresses 列表
-	if !ipMatched {
-		for _, ip := range cert.IPAddresses {
-			if ip.String() == m.PublicIP {
-				logrus.Infof("Certificate IP matched (IPAddresses): %s", m.PublicIP)
-				ipMatched = true
-				break
-			}
+	// 從 IPAddresses 收集
+	for _, ip := range cert.IPAddresses {
+		certIPs[ip.String()] = true
+	}
+
+	// 從 DNSNames 收集（有些證書可能把 IP 放在這裡）
+	for _, dns := range cert.DNSNames {
+		certIPs[dns] = true
+	}
+
+	// 檢查每個配置的 IP 是否都在證書中
+	for _, publicIP := range m.PublicIps {
+		if !certIPs[publicIP] {
+			logrus.Errorf("Certificate IP mismatch, expected IP %s not found in certificate", publicIP)
+			logrus.Errorf("Certificate contains: CommonName=%s, IPAddresses=%v, DNSNames=%v",
+				cert.Subject.CommonName, cert.IPAddresses, cert.DNSNames)
+			return errx.Validation.AppendMsgf("certificate missing required IP: %s", publicIP).Err()
 		}
+		logrus.Infof("Certificate contains required IP: %s", publicIP)
 	}
 
-	// 檢查 DNSNames 列表（有些證書可能把 IP 放在這裡）
-	if !ipMatched {
-		for _, dns := range cert.DNSNames {
-			if dns == m.PublicIP {
-				logrus.Infof("Certificate IP matched (DNSNames): %s", m.PublicIP)
-				ipMatched = true
-				break
-			}
-		}
-	}
-
-	if !ipMatched {
-		logrus.Errorf("Certificate IP mismatch, expected: %s, CommonName: %s, IPAddresses: %v, DNSNames: %v",
-			m.PublicIP, cert.Subject.CommonName, cert.IPAddresses, cert.DNSNames)
-		return errx.Validation.WithMsgf("certificate IP mismatch, expected: %s", m.PublicIP).Err()
-	}
-
+	logrus.Infof("All required IPs (%v) found in certificate", m.PublicIps)
 	return nil
 }
 
@@ -173,13 +167,13 @@ func (m *manager) obtainCertificate(ctx context.Context) error {
 	// 1. 生成 CSR
 	csr, err := m.generateCSR()
 	if err != nil {
-		return errx.Wrap(err).WithMsg("failed to generate CSR").Err()
+		return errx.Wrap(err).AppendMsg("failed to generate CSR").Err()
 	}
 	logrus.Info("CSR generated successfully")
 
 	// 2. 創建證書
 	createReq := CreateCertificateRequest{
-		CertificateDomains:      m.PublicIP,
+		CertificateDomains:      strings.Join(m.PublicIps, ","),
 		CertificateCSR:          csr,
 		CertificateValidityDays: m.CertValidityDays,
 	}
@@ -189,29 +183,25 @@ func (m *manager) obtainCertificate(ctx context.Context) error {
 		return err
 	}
 
-	// 3. 獲取驗證詳情
+	// 3. 獲取所有 IP 的驗證詳情
 	logrus.Info("Getting validation details...")
-	validationDetails, ok := createResp.Validation.OtherMethods[m.PublicIP]
-	if !ok {
-		validationJSON, _ := json.MarshalIndent(createResp.Validation, "", "  ")
-		logrus.Errorf("Validation data: %s", string(validationJSON))
-		return errx.New("IP validation info not found")
+	if len(m.PublicIps) == 0 {
+		return errx.New("no public IPs configured")
 	}
 
-	if validationDetails.FileValidationURLHTTP == "" || len(validationDetails.FileValidationContent) == 0 {
-		validationJSON, _ := json.MarshalIndent(validationDetails, "", "  ")
-		logrus.Errorf("Validation data: %s", string(validationJSON))
-		return errx.New("validation info incomplete")
+	// 驗證所有 IP 都有驗證信息
+	for _, ip := range m.PublicIps {
+		if _, ok := createResp.Validation.OtherMethods[ip]; !ok {
+			validationJSON, _ := json.MarshalIndent(createResp.Validation, "", "  ")
+			logrus.Errorf("Validation data: %s", string(validationJSON))
+			return errx.Newf("IP validation info not found for: %s", ip)
+		}
 	}
 
-	// 4. 準備驗證內容
-	logrus.Info("Preparing validation...")
-	validationContent := strings.Join(validationDetails.FileValidationContent, "\n")
-	logrus.Infof("Validation URL: %s", validationDetails.FileValidationURLHTTP)
-
-	// 5. 啟動臨時 HTTP 服務器用於驗證
-	if err := startValidationServer(ctx, validationContent); err != nil {
-		return errx.Wrap(err).WithMsg("failed to start validation server").Err()
+	// 4. 啟動臨時 HTTP 服務器用於驗證（傳入所有驗證信息）
+	logrus.Info("Starting validation server...")
+	if err := startValidationServer(ctx, createResp.Validation.OtherMethods); err != nil {
+		return errx.Wrap(err).AppendMsg("failed to start validation server").Err()
 	}
 
 	// 等待一下讓服務器啟動
@@ -264,13 +254,13 @@ func (m *manager) generateCSR() (string, error) {
 	// 生成私鑰
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return "", errx.Wrap(err).WithMsg("failed to generate private key").Err()
+		return "", errx.Wrap(err).AppendMsg("failed to generate private key").Err()
 	}
 
 	// 保存私鑰 (privkey.pem)
 	keyFile, err := os.Create(keyPath)
 	if err != nil {
-		return "", errx.Wrap(err).WithMsg("failed to create private key file").Err()
+		return "", errx.Wrap(err).AppendMsg("failed to create private key file").Err()
 	}
 	defer keyFile.Close()
 
@@ -279,20 +269,26 @@ func (m *manager) generateCSR() (string, error) {
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 	if _, err := keyFile.Write(keyPEM); err != nil {
-		return "", errx.Wrap(err).WithMsg("failed to write private key").Err()
+		return "", errx.Wrap(err).AppendMsg("failed to write private key").Err()
 	}
 	logrus.Infof("Private key saved: %s", keyPath)
 
 	// 生成 CSR
+	commonName := m.PublicIps[0]
+	if len(m.PublicIps) > 1 {
+		// 如果有多個 IP，使用逗號連接作為 CommonName
+		commonName = strings.Join(m.PublicIps, ",")
+	}
+
 	template := x509.CertificateRequest{
 		Subject: pkix.Name{
-			CommonName: m.PublicIP,
+			CommonName: commonName,
 		},
 	}
 
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &template, privateKey)
 	if err != nil {
-		return "", errx.Wrap(err).WithMsg("failed to create CSR").Err()
+		return "", errx.Wrap(err).AppendMsg("failed to create CSR").Err()
 	}
 
 	csrPEM := pem.EncodeToMemory(&pem.Block{
@@ -305,15 +301,51 @@ func (m *manager) generateCSR() (string, error) {
 }
 
 // startValidationServer 啟動臨時 HTTP 服務器用於驗證
-// 不管請求什麼路徑，都返回驗證內容
-func startValidationServer(ctx context.Context, validationContent string) error {
-	// 創建自定義 handler，對所有請求返回驗證內容
+// 根據不同的 IP 對應的路徑返回不同的驗證內容
+func startValidationServer(ctx context.Context, otherMethods OtherMethods) error {
+	// 構建路徑到驗證內容的映射
+	pathToContent := make(map[string]string)
+
+	for ip, details := range otherMethods {
+		if details.FileValidationURLHTTP == "" || len(details.FileValidationContent) == 0 {
+			logrus.Warningf("Incomplete validation info for IP %s", ip)
+			continue
+		}
+
+		// 從 URL 中提取路徑
+		// URL 格式: http://ip/.well-known/pki-validation/xxx.txt
+		urlParts := strings.Split(details.FileValidationURLHTTP, "/")
+		if len(urlParts) >= 2 {
+			// 獲取路徑部分（/.well-known/pki-validation/xxx.txt）
+			path := "/" + strings.Join(urlParts[3:], "/")
+			content := strings.Join(details.FileValidationContent, "\n")
+			pathToContent[path] = content
+			logrus.Infof("Mapped validation path for IP %s: %s", ip, path)
+		}
+	}
+
+	if len(pathToContent) == 0 {
+		return errx.New("no valid validation paths found")
+	}
+
+	// 創建 handler，根據請求路徑返回對應的驗證內容
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logrus.Infof("Received validation request: %s %s", r.Method, r.URL.Path)
+		logrus.Infof("Received validation request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		content, ok := pathToContent[r.URL.Path]
+		if !ok {
+			logrus.Warningf("Unknown validation path: %s", r.URL.Path)
+			// 嘗試返回任意一個驗證內容（兼容舊邏輯）
+			for _, c := range pathToContent {
+				content = c
+				break
+			}
+		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(validationContent))
-		logrus.Infof("Returned validation content to: %s", r.RemoteAddr)
+		w.Write([]byte(content))
+		logrus.Infof("Returned validation content for path: %s", r.URL.Path)
 	})
 
 	server := &http.Server{
@@ -341,6 +373,7 @@ func startValidationServer(ctx context.Context, validationContent string) error 
 	}()
 
 	logrus.Info("Temporary HTTP server started (listening on :80)")
+	logrus.Infof("Serving %d validation paths", len(pathToContent))
 	return nil
 }
 
@@ -354,20 +387,20 @@ func (m *manager) saveCertificate(ctx context.Context, certID, certPath, chainPa
 
 	// 1. 保存證書本身 (cert.pem)
 	if err := os.WriteFile(certPath, []byte(certFiles.CertificateCrt), 0644); err != nil {
-		return errx.Wrap(err).WithMsg("failed to save certificate").Err()
+		return errx.Wrap(err).AppendMsg("failed to save certificate").Err()
 	}
 	logrus.Infof("Certificate saved: %s", certPath)
 
 	// 2. 保存 CA 鏈 (chain.pem)
 	if err := os.WriteFile(chainPath, []byte(certFiles.CaBundleCrt), 0644); err != nil {
-		return errx.Wrap(err).WithMsg("failed to save CA chain").Err()
+		return errx.Wrap(err).AppendMsg("failed to save CA chain").Err()
 	}
 	logrus.Infof("CA chain saved: %s", chainPath)
 
 	// 3. 保存完整證書鏈 (fullchain.pem = cert.pem + chain.pem)
 	fullchain := certFiles.CertificateCrt + "\n" + certFiles.CaBundleCrt
 	if err := os.WriteFile(fullchainPath, []byte(fullchain), 0644); err != nil {
-		return errx.Wrap(err).WithMsg("failed to save full chain").Err()
+		return errx.Wrap(err).AppendMsg("failed to save full chain").Err()
 	}
 	logrus.Infof("Full chain saved: %s", fullchainPath)
 

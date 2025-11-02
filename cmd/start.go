@@ -14,8 +14,8 @@ import (
 )
 
 type StartCmd struct {
-	Config  `embed:""`
-	WorkDir string `help:"工作目錄" type:"path"`
+	Config        `embed:""`
+	DockerConfDir string `help:"Docker Compose配置根目錄" type:"path" default:"./docker"`
 }
 
 func (s *StartCmd) Run() error {
@@ -41,13 +41,7 @@ func (s *StartCmd) Run() error {
 	apps := map[string]compose.App{}
 	{
 		workDir := filepath.Join(wd, "")
-		s3Cfg := compose.S3Config{
-			BaseEndpoint: s.S3.Endpoint,
-			AccessKey:    s.S3.AccessKey,
-			Secret:       s.S3.Secret,
-			Region:       s.S3.Region,
-			Bucket:       s.S3.Bucket,
-		}
+		s3Cfg := s.S3.ToCompose()
 		for _, appName := range s.AppNames {
 			apps[appName] = compose.NewApp(appName, workDir, s3Cfg)
 		}

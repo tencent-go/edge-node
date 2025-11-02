@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"path"
 	"strings"
 	"sync"
 	"time"
@@ -12,21 +11,20 @@ import (
 )
 
 type PackCmd struct {
-	App      string   `help:"指定AppName 若為空則打包全部"`
-	WorkDir  string   `help:"工作目錄" type:"path"`
-	S3       S3Config `embed:"" prefix:"s3." yaml:"s3"`
-	AppNames []string `help:"應用名稱列表" env:"APP_NAMES" sep:"," name:"app-names" yaml:"app-names"`
+	DockerConfDir string   `help:"Docker Compose配置根目錄" type:"path" default:"./docker"`
+	S3            S3Config `embed:"" prefix:"s3." yaml:"s3"`
+	AppNames      []string `help:"應用名稱列表" env:"APP_NAMES" sep:"," name:"app-names" yaml:"app-names"`
 }
 
 func (c *PackCmd) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if c.App != "" {
-		return c.pack(ctx, c.App)
-	}
 	if len(c.AppNames) == 0 {
 		fmt.Println("no app-names specified")
 		return nil
+	}
+	if len(c.AppNames) == 1 {
+		return c.pack(ctx, c.AppNames[0])
 	}
 	wg := &sync.WaitGroup{}
 	wg.Add(len(c.AppNames))
@@ -65,6 +63,6 @@ func (c *PackCmd) Run() error {
 }
 
 func (c *PackCmd) pack(ctx context.Context, appName string) error {
-	app := compose.NewApp(appName, path.Join(c.WorkDir, "compose"), c.S3.ToCompose())
+	app := compose.NewApp(appName, c.DockerConfDir, c.S3.ToCompose())
 	return app.Pack(ctx)
 }

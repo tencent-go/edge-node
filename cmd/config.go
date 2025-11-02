@@ -14,16 +14,16 @@ type ZeroSSLConfig struct {
 }
 
 type S3Config struct {
-	Endpoint  string `help:"S3 端點（R2 使用）" env:"S3_ENDPOINT" name:"endpoint" yaml:"endpoint"`
-	AccessKey string `help:"S3 Access Key" env:"S3_ACCESS_KEY" name:"access-key" yaml:"access-key"`
-	Secret    string `help:"S3 Secret" env:"S3_SECRET" name:"secret" yaml:"secret"`
-	Region    string `help:"S3 區域" env:"S3_REGION" default:"auto" name:"region" yaml:"region"`
-	Bucket    string `help:"S3 桶名" env:"S3_BUCKET" name:"bucket" yaml:"bucket"`
+	BaseEndpoint string `help:"S3 端點（R2 使用）" env:"S3_BASE_ENDPOINT" name:"base-endpoint" yaml:"base-endpoint"`
+	AccessKey    string `help:"S3 Access Key" env:"S3_ACCESS_KEY" name:"access-key" yaml:"access-key"`
+	Secret       string `help:"S3 Secret" env:"S3_SECRET" name:"secret" yaml:"secret"`
+	Region       string `help:"S3 區域" env:"S3_REGION" default:"auto" name:"region" yaml:"region"`
+	Bucket       string `help:"S3 桶名" env:"S3_BUCKET" name:"bucket" yaml:"bucket"`
 }
 
 func (cfg S3Config) ToCompose() compose.S3Config {
 	return compose.S3Config{
-		BaseEndpoint: cfg.Endpoint,
+		BaseEndpoint: cfg.BaseEndpoint,
 		AccessKey:    cfg.AccessKey,
 		Secret:       cfg.Secret,
 		Region:       cfg.Region,
@@ -42,8 +42,8 @@ type Config struct {
 	S3 S3Config `embed:"" prefix:"s3." yaml:"s3"`
 
 	// 公網 IP 地址
-	PublicIPs []string `help:"公網 IP 地址列表" env:"PUBLIC_IPS" sep:"," name:"public-ips" yaml:"public_ips"`
+	PublicIPs []string `help:"公網 IP 地址列表" env:"PUBLIC_IPS" sep:"," name:"public-ips" yaml:"public-ips"`
 
 	// 應用配置
-	AppNames []string `help:"應用名稱列表" env:"APP_NAMES" sep:"," name:"app-names" yaml:"app_names"`
+	AppNames []string `help:"應用名稱列表" env:"APP_NAMES" sep:"," name:"app-names" yaml:"app-names"`
 }

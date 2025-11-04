@@ -29,9 +29,8 @@ func (c *PackCmd) Run() error {
 	wg := &sync.WaitGroup{}
 	wg.Add(len(c.AppNames))
 	var (
-		mu           sync.Mutex
-		failedNames  []string
-		successNames []string
+		mu          sync.Mutex
+		failedNames []string
 	)
 	for _, name := range c.AppNames {
 		appName := name
@@ -43,17 +42,12 @@ func (c *PackCmd) Run() error {
 				mu.Unlock()
 				return
 			}
-			mu.Lock()
-			successNames = append(successNames, appName)
-			mu.Unlock()
 		}()
 	}
 	wg.Wait()
 
-	fmt.Printf("pack summary - success: %d, failed: %d\n", len(successNames), len(failedNames))
-	if len(successNames) > 0 {
-		fmt.Printf("  succeeded apps: %s\n", strings.Join(successNames, ", "))
-	}
+	fmt.Printf("pack summary - total: %d, failed: %d\n", len(c.AppNames), len(failedNames))
+
 	if len(failedNames) > 0 {
 		fmt.Printf("  failed apps: %s\n", strings.Join(failedNames, ", "))
 		return fmt.Errorf("pack failed for apps: %s", strings.Join(failedNames, ", "))

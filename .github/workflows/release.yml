@@ -22,6 +22,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            **/go.sum
 
       - name: Bump version
         id: tag

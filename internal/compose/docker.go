@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"bitbucket.org/tencent-international/go-pkg/errx"
+	"github.com/tencent-go/pkg/errx"
 	"github.com/sirupsen/logrus"
 )
 

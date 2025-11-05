@@ -3,13 +3,13 @@ module github.com/tencent-go/edge-node
 go 1.25.0
 
 require (
-	bitbucket.org/tencent-international/go-pkg v0.2.0
 	github.com/alecthomas/kong v1.12.1
 	github.com/aws/aws-sdk-go-v2 v1.39.5
 	github.com/aws/aws-sdk-go-v2/config v1.31.16
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.20
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.89.1
 	github.com/sirupsen/logrus v1.9.3
+	github.com/tencent-go/pkg v0.0.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

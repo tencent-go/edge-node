@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"bitbucket.org/tencent-international/go-pkg/errx"
+	"github.com/tencent-go/pkg/errx"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
